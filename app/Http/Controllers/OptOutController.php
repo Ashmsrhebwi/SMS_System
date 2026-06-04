@@ -2,34 +2,42 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Campaign;
 use App\Models\Contact;
+use App\Models\GlobalBlacklist;
 use App\Models\OptOut;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 
 class OptOutController extends Controller
 {
     public function form(Request $request)
     {
-        $campaign = \App\Models\Campaign::find($request->query('campaign'));
-        $contact = Contact::find($request->query('contact'));
-
+        $campaign = Campaign::find($request->query('campaign'));
+        $contact  = Contact::find($request->query('contact'));
         return view('optout.form', compact('campaign', 'contact'));
     }
 
     public function process(Request $request)
     {
         $data = $request->validate([
-            'phone' => 'required|string',
+            'phone'  => 'required|string',
             'reason' => 'nullable|string|max:500',
         ]);
 
-        $phone = $data['phone'];
+        $phone  = $data['phone'];
+        $reason = $data['reason'] ?? 'User requested opt-out';
 
-        // Mark contact as opted out
         Contact::where('phone', $phone)->update(['opted_in' => false]);
 
-        // Record in opt_outs table (ignore duplicate)
-        OptOut::firstOrCreate(['phone' => $phone], ['reason' => $data['reason'] ?? '']);
+        OptOut::firstOrCreate(['phone' => $phone], ['reason' => $reason]);
+        GlobalBlacklist::firstOrCreate(['phone' => $phone], ['reason' => $reason]);
+
+        // Log activity for the contact
+        $contact = Contact::where('phone', $phone)->first();
+        if ($contact) {
+            ActivityLogger::optedOut($contact);
+        }
 
         return view('optout.confirmed');
     }

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Click;
-use Illuminate\Http\Request;
+use App\Services\ActivityLogger;
 
 class TrackingController extends Controller
 {
@@ -19,6 +19,12 @@ class TrackingController extends Controller
 
         if ($click->click_count === 1 || $click->first_clicked_at === null) {
             $click->update(['first_clicked_at' => now()]);
+        }
+
+        // Log activity (load message with contact and campaign)
+        $message = $click->message()->with(['contact', 'campaign'])->first();
+        if ($message) {
+            ActivityLogger::linkClicked($message);
         }
 
         return redirect($click->target_url);

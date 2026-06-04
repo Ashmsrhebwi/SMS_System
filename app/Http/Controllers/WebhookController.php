@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campaign;
 use App\Models\Message;
+use App\Services\ActivityLogger;
 use App\Services\TwilioService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -13,19 +14,22 @@ class WebhookController extends Controller
 {
     public function twilioStatus(Request $request, TwilioService $twilio)
     {
-        // Validate Twilio signature
-        $signature = $request->header('X-Twilio-Signature', '');
-        $url = $request->url();
-        $params = $request->all();
+        if (app()->isProduction()) {
+            $signature = $request->header('X-Twilio-Signature', '');
+            $url = route('webhooks.twilio.status');
+            $params = $request->post();
 
-        if (!$twilio->validateRequest($signature, $url, $params)) {
-            Log::warning('Invalid Twilio webhook signature', ['ip' => $request->ip()]);
-            return response('Forbidden', 403);
+            if (!$twilio->validateRequest($signature, $url, $params)) {
+                Log::warning('Invalid Twilio webhook signature', ['ip' => $request->ip()]);
+                return response('Forbidden', 403);
+            }
         }
 
         $messageSid = $request->input('MessageSid');
         $messageStatus = $request->input('MessageStatus');
         $errorCode = $request->input('ErrorCode');
+
+        Log::info('Twilio webhook received', ['sid' => $messageSid, 'status' => $messageStatus]);
 
         if (!$messageSid || !$messageStatus) {
             return response('Bad Request', 400);
@@ -34,7 +38,17 @@ class WebhookController extends Controller
         $message = Message::where('twilio_sid', $messageSid)->first();
 
         if (!$message) {
-            Log::info('Twilio webhook: message not found', ['sid' => $messageSid]);
+            Log::warning('Twilio webhook: message not found', ['sid' => $messageSid]);
+            return response('OK', 200);
+        }
+
+        // Ignore out-of-order callbacks (e.g. "queued" arriving after "delivered")
+        $priority = ['pending' => 0, 'queued' => 1, 'sending' => 2, 'sent' => 3, 'delivered' => 4, 'undelivered' => 4, 'failed' => 4];
+        $currentPriority = $priority[$message->status] ?? 0;
+        $newPriority = $priority[$messageStatus] ?? 0;
+
+        if ($newPriority < $currentPriority) {
+            Log::info('Twilio webhook: ignoring out-of-order status', ['sid' => $messageSid, 'current' => $message->status, 'incoming' => $messageStatus]);
             return response('OK', 200);
         }
 
@@ -50,6 +64,14 @@ class WebhookController extends Controller
         }
 
         $message->update($updateData);
+
+        // Activity logging (reload fresh message with campaign)
+        $fresh = $message->fresh(['campaign']);
+        if ($messageStatus === 'delivered') {
+            ActivityLogger::smsDelivered($fresh);
+        } elseif (in_array($messageStatus, ['failed', 'undelivered'])) {
+            ActivityLogger::smsFailed($fresh);
+        }
 
         // Check if all messages in campaign are done
         $this->checkCampaignCompletion($message->campaign_id);

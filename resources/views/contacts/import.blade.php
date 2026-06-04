@@ -135,6 +135,27 @@
             </div>
         </div>
 
+        <!-- Duplicate Handling -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-5">
+            <h3 class="text-sm font-semibold text-slate-700 mb-4">Duplicate Contact Handling</h3>
+            <div class="grid grid-cols-2 gap-3">
+                <label class="cursor-pointer">
+                    <input type="radio" name="duplicate_action" value="skip" checked class="sr-only peer">
+                    <div class="border-2 border-slate-200 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 rounded-xl p-4 transition-all">
+                        <p class="text-sm font-semibold text-slate-800">Skip Duplicates</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Skip rows where phone or email already exists</p>
+                    </div>
+                </label>
+                <label class="cursor-pointer">
+                    <input type="radio" name="duplicate_action" value="update" class="sr-only peer">
+                    <div class="border-2 border-slate-200 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 rounded-xl p-4 transition-all">
+                        <p class="text-sm font-semibold text-slate-800">Update Existing</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Update name, email, and notes for matching contacts</p>
+                    </div>
+                </label>
+            </div>
+        </div>
+
         <button type="submit" id="submitBtn"
                 class="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

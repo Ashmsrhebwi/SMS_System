@@ -12,10 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Exempt Twilio webhooks and public opt-out from CSRF
         $middleware->validateCsrfTokens(except: [
             'webhooks/twilio/status',
             'optout',
         ]);
+
+        // Apply security headers to all web responses
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

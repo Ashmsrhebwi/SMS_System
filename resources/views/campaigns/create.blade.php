@@ -14,7 +14,7 @@
         </a>
         <div>
             <h2 class="text-2xl font-bold text-slate-900 tracking-tight">New Campaign</h2>
-            <p class="text-sm text-slate-500 mt-0.5">
+            <p class="text-sm text-slate-500 mt-0.5" id="eligibleLabel">
                 <span class="inline-flex items-center gap-1">
                     <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -60,11 +60,30 @@
                         </span>
                         Campaign Details
                     </h3>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5" for="name">Campaign Name</label>
-                        <input type="text" id="name" name="name" value="{{ old('name') }}"
-                               class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
-                               placeholder="e.g. Summer Checkup Reminder">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5" for="name">Campaign Name</label>
+                            <input type="text" id="name" name="name" value="{{ old('name') }}"
+                                   class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
+                                   placeholder="e.g. Summer Checkup Reminder">
+                        </div>
+
+                        @if($segments->count())
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5" for="segment_id">Send To</label>
+                            <select id="segment_id" name="segment_id"
+                                    class="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white">
+                                <option value="">All Eligible Contacts ({{ number_format($eligibleCount) }})</option>
+                                @foreach($segments as $segment)
+                                    <option value="{{ $segment->id }}" {{ old('segment_id') == $segment->id ? 'selected' : '' }}>
+                                        {{ $segment->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        @else
+                            <input type="hidden" name="segment_id" value="">
+                        @endif
                     </div>
                 </div>
 
@@ -78,6 +97,19 @@
                         </span>
                         Message Body
                     </h3>
+
+                    @if($templates->count())
+                    <div class="mb-3">
+                        <select id="templatePicker" onchange="loadTemplate(this)"
+                                class="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— Load from template —</option>
+                            @foreach($templates as $tmpl)
+                                <option value="{{ $tmpl->id }}" data-content="{{ $tmpl->content }}">{{ $tmpl->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
+
                     <div class="flex items-center gap-2 mb-3">
                         <span class="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
                             Use <code class="font-mono font-semibold text-indigo-600 mx-0.5">{name}</code> to personalise
@@ -112,10 +144,9 @@
                     </h3>
 
                     <div class="grid grid-cols-3 gap-3 mb-4">
-                        <!-- Send Now -->
                         <label class="timing-card cursor-pointer" for="timing_now">
                             <input type="radio" id="timing_now" name="send_timing" value="now" checked class="sr-only">
-                            <div class="timing-option border-2 border-slate-200 rounded-xl p-4 text-center hover:border-indigo-300 transition-all selected-timing:border-indigo-500 selected-timing:bg-indigo-50">
+                            <div class="timing-option border-2 border-slate-200 rounded-xl p-4 text-center hover:border-indigo-300 transition-all">
                                 <div class="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center mx-auto mb-2.5">
                                     <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -125,8 +156,6 @@
                                 <p class="text-xs text-slate-400 mt-0.5">Immediately</p>
                             </div>
                         </label>
-
-                        <!-- Schedule -->
                         <label class="timing-card cursor-pointer" for="timing_later">
                             <input type="radio" id="timing_later" name="send_timing" value="later" class="sr-only">
                             <div class="timing-option border-2 border-slate-200 rounded-xl p-4 text-center hover:border-indigo-300 transition-all">
@@ -139,8 +168,6 @@
                                 <p class="text-xs text-slate-400 mt-0.5">Pick a date</p>
                             </div>
                         </label>
-
-                        <!-- Draft -->
                         <label class="timing-card cursor-pointer" for="timing_draft">
                             <input type="radio" id="timing_draft" name="send_timing" value="draft" class="sr-only">
                             <div class="timing-option border-2 border-slate-200 rounded-xl p-4 text-center hover:border-indigo-300 transition-all">
@@ -155,7 +182,6 @@
                         </label>
                     </div>
 
-                    <!-- Schedule Date/Time Input -->
                     <div id="scheduleInput" class="hidden mt-1">
                         <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Schedule Date &amp; Time</label>
                         <input type="datetime-local" name="scheduled_at" value="{{ old('scheduled_at') }}"
@@ -194,14 +220,10 @@
                             Live Preview
                         </h3>
 
-                        <!-- Phone Mockup -->
                         <div class="flex justify-center">
                             <div class="relative w-56">
-                                <!-- Phone frame -->
                                 <div class="bg-slate-800 rounded-[2.5rem] p-3 shadow-2xl">
-                                    <!-- Screen -->
                                     <div class="bg-slate-100 rounded-[2rem] overflow-hidden">
-                                        <!-- Status bar -->
                                         <div class="bg-slate-200/80 px-4 py-1.5 flex items-center justify-between">
                                             <span class="text-[10px] font-semibold text-slate-600">9:41</span>
                                             <div class="flex items-center gap-1">
@@ -209,15 +231,10 @@
                                                 <div class="w-1 h-1 rounded-full bg-slate-600"></div>
                                             </div>
                                         </div>
-
-                                        <!-- Messages area -->
                                         <div class="bg-slate-100 min-h-[280px] px-3 py-4">
-                                            <!-- Sender label -->
                                             <div class="text-center mb-3">
                                                 <span class="text-[10px] text-slate-400 font-medium bg-white/80 rounded-full px-2.5 py-0.5">FeRa Clinic</span>
                                             </div>
-
-                                            <!-- Empty state -->
                                             <div id="phoneEmpty" class="flex flex-col items-center justify-center py-8 text-center">
                                                 <div class="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center mb-2">
                                                     <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -226,8 +243,6 @@
                                                 </div>
                                                 <p class="text-xs text-slate-400 leading-snug">Start typing your<br>message to preview</p>
                                             </div>
-
-                                            <!-- Message bubble -->
                                             <div id="phoneBubble" class="hidden">
                                                 <div class="bg-white rounded-2xl rounded-bl-sm px-3 py-2.5 shadow-sm max-w-[90%]">
                                                     <p id="previewText" class="text-xs text-slate-800 leading-relaxed break-words"></p>
@@ -239,14 +254,12 @@
                                         </div>
                                     </div>
                                 </div>
-                                <!-- Home indicator -->
                                 <div class="flex justify-center mt-2">
                                     <div class="w-20 h-1 bg-slate-600 rounded-full"></div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Stats below phone -->
                         <div class="mt-5 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3">
                             <div class="bg-slate-50 rounded-xl px-3 py-2.5 text-center">
                                 <p class="text-lg font-bold text-slate-900" id="previewCharCount">0</p>
@@ -270,6 +283,15 @@
 </div>
 
 <script>
+function loadTemplate(select) {
+    const option = select.options[select.selectedIndex];
+    const content = option.getAttribute('data-content');
+    if (content) {
+        document.getElementById('messageBody').value = content;
+        updatePreview();
+    }
+}
+
 function updatePreview() {
     const body = document.getElementById('messageBody').value;
     const charCount = document.getElementById('charCount');
@@ -290,7 +312,6 @@ function updatePreview() {
     segmentCount.textContent = segs + ' segment' + (segs > 1 ? 's' : '') + ' (' + (segs === 1 ? '160' : '153') + ' chars/segment)';
     previewSegCount.textContent = segs;
 
-    // Warning
     const singleLimit = segs === 1 ? 160 : segs * 153;
     const remaining = singleLimit - len;
     if (len > 0 && remaining < 20) {
@@ -312,7 +333,6 @@ function updatePreview() {
     }
 }
 
-// Timing card visual selection
 function updateTimingCards() {
     const selected = document.querySelector('input[name="send_timing"]:checked');
     document.querySelectorAll('.timing-option').forEach(el => {
@@ -360,7 +380,6 @@ document.getElementById('campaignForm').addEventListener('submit', function(e) {
     }
 });
 
-// Initialize
 updatePreview();
 updateTimingCards();
 </script>

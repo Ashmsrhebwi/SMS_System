@@ -10,12 +10,15 @@ class Message extends Model
 {
     protected $fillable = [
         'campaign_id', 'contact_id', 'twilio_sid', 'status',
-        'error_code', 'error_message', 'message_body', 'sent_at', 'delivered_at',
+        'error_code', 'error_message', 'message_body',
+        'sms_segments', 'cost', 'resend_count',
+        'sent_at', 'delivered_at',
     ];
 
     protected $casts = [
-        'sent_at' => 'datetime',
+        'sent_at'      => 'datetime',
         'delivered_at' => 'datetime',
+        'cost'         => 'float',
     ];
 
     public function campaign(): BelongsTo

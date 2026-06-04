@@ -27,6 +27,12 @@
                         @endif
                         {{ ucfirst($campaign->status) }}
                     </span>
+                    @if($campaign->segment)
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-full px-2.5 py-1">
+                            <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/></svg>
+                            {{ $campaign->segment->name }}
+                        </span>
+                    @endif
                 </div>
                 <p class="text-xs text-slate-400 mt-1">
                     Created {{ $campaign->created_at->format('d M Y H:i') }}
@@ -38,6 +44,19 @@
             </div>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
+            @can('duplicate', $campaign)
+            <form method="POST" action="{{ route('campaigns.duplicate', $campaign) }}">
+                @csrf
+                <button type="submit"
+                        class="inline-flex items-center gap-2 border border-slate-200 bg-white text-slate-600 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    Clone
+                </button>
+            </form>
+            @endcan
+            @can('send', $campaign)
             @if(in_array($campaign->status, ['draft', 'scheduled']))
                 <form method="POST" action="{{ route('campaigns.send-now', $campaign) }}">
                     @csrf
@@ -51,6 +70,8 @@
                     </button>
                 </form>
             @endif
+            @endcan
+            @can('export', $campaign)
             <a href="{{ route('campaigns.export', $campaign) }}"
                class="inline-flex items-center gap-2 border border-slate-200 bg-white text-slate-700 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -58,6 +79,7 @@
                 </svg>
                 Export
             </a>
+            @endcan
         </div>
     </div>
 
@@ -88,79 +110,100 @@
 
     <!-- 7 Mini Stat Cards -->
     <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
             <p class="text-2xl font-bold text-slate-900 leading-none">{{ number_format($stats['total']) }}</p>
             <p class="text-xs text-slate-500 mt-1.5 font-medium">Total</p>
         </div>
-
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
             <p class="text-2xl font-bold text-amber-600 leading-none">{{ number_format($stats['pending']) }}</p>
             <p class="text-xs text-slate-500 mt-1.5 font-medium">Pending</p>
         </div>
-
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
             <p class="text-2xl font-bold text-sky-600 leading-none">{{ number_format($stats['queued']) }}</p>
             <p class="text-xs text-slate-500 mt-1.5 font-medium">Queued</p>
         </div>
-
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
             <p class="text-2xl font-bold text-indigo-600 leading-none">{{ number_format($stats['sent']) }}</p>
             <p class="text-xs text-slate-500 mt-1.5 font-medium">Sent</p>
         </div>
-
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
             <p class="text-2xl font-bold text-emerald-600 leading-none">{{ number_format($stats['delivered']) }}</p>
             <p class="text-xs text-slate-500 mt-1.5 font-medium">Delivered</p>
         </div>
-
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
             <p class="text-2xl font-bold text-red-500 leading-none">{{ number_format($stats['failed']) }}</p>
             <p class="text-xs text-slate-500 mt-1.5 font-medium">Failed</p>
         </div>
-
         <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center hover:shadow-md transition-shadow">
             <p class="text-2xl font-bold text-violet-600 leading-none">{{ number_format($stats['clicked']) }}</p>
             <p class="text-xs text-slate-500 mt-1.5 font-medium">Clicked</p>
         </div>
-
     </div>
 
-    <!-- Rate Progress Bars -->
+    <!-- Rate Cards -->
     @if($stats['total'] > 0)
-    @php
-        $deliveryRate = $stats['total'] > 0 ? round(($stats['delivered'] / max($stats['total'], 1)) * 100, 1) : 0;
-        $clickRate = $stats['delivered'] > 0 ? round(($stats['clicked'] / $stats['delivered']) * 100, 1) : 0;
-    @endphp
-    <div class="grid grid-cols-2 gap-4 mb-6">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        @php
+            $rateCards = [
+                ['label' => 'Delivery Rate', 'sub' => 'Delivered vs. sent', 'value' => $rates['delivery'], 'color' => 'emerald', 'bar' => 'bg-emerald-500'],
+                ['label' => 'Failure Rate', 'sub' => 'Failed vs. sent', 'value' => $rates['failure'], 'color' => 'red', 'bar' => 'bg-red-400'],
+                ['label' => 'Click Rate', 'sub' => 'Clicked vs. delivered', 'value' => $rates['click'], 'color' => 'violet', 'bar' => 'bg-violet-500'],
+                ['label' => 'Opt-Out Rate', 'sub' => 'Opted out after receive', 'value' => $rates['opt_out'], 'color' => 'amber', 'bar' => 'bg-amber-400'],
+            ];
+        @endphp
+        @foreach($rateCards as $card)
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
             <div class="flex items-center justify-between mb-3">
                 <div>
-                    <p class="text-sm font-semibold text-slate-700">Delivery Rate</p>
-                    <p class="text-xs text-slate-400 mt-0.5">Messages delivered vs. sent</p>
+                    <p class="text-sm font-semibold text-slate-700">{{ $card['label'] }}</p>
+                    <p class="text-xs text-slate-400 mt-0.5">{{ $card['sub'] }}</p>
                 </div>
-                <span class="text-xl font-bold text-emerald-600">{{ $deliveryRate }}%</span>
+                <span class="text-xl font-bold text-{{ $card['color'] }}-600">{{ $card['value'] }}%</span>
             </div>
             <div class="w-full bg-slate-100 rounded-full h-2.5">
-                <div class="bg-emerald-500 h-2.5 rounded-full transition-all duration-500"
-                     style="width: {{ $deliveryRate }}%"></div>
+                <div class="{{ $card['bar'] }} h-2.5 rounded-full transition-all duration-500"
+                     style="width: {{ min($card['value'], 100) }}%"></div>
             </div>
         </div>
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-            <div class="flex items-center justify-between mb-3">
-                <div>
-                    <p class="text-sm font-semibold text-slate-700">Click Rate</p>
-                    <p class="text-xs text-slate-400 mt-0.5">Clicked vs. delivered</p>
-                </div>
-                <span class="text-xl font-bold text-violet-600">{{ $clickRate }}%</span>
-            </div>
-            <div class="w-full bg-slate-100 rounded-full h-2.5">
-                <div class="bg-violet-500 h-2.5 rounded-full transition-all duration-500"
-                     style="width: {{ min($clickRate, 100) }}%"></div>
-            </div>
-        </div>
+        @endforeach
     </div>
     @endif
+
+    <!-- Cost + Resend Row -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Cost</p>
+            <p class="text-2xl font-bold text-slate-900">{{ $costStats['symbol'] }}{{ number_format($costStats['total_cost'], 2) }}</p>
+            <p class="text-xs text-slate-400 mt-0.5">{{ number_format($costStats['total_segments']) }} segments total</p>
+        </div>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Cost per Message</p>
+            @php $cpMsg = $stats['total'] > 0 ? round($costStats['total_cost'] / $stats['total'], 4) : 0; @endphp
+            <p class="text-2xl font-bold text-slate-900">{{ $costStats['symbol'] }}{{ number_format($cpMsg, 4) }}</p>
+            <p class="text-xs text-slate-400 mt-0.5">Average across all recipients</p>
+        </div>
+        @can('send', $campaign)
+        @if($stats['failed'] > 0 && in_array($campaign->status, ['completed', 'sending']))
+        <div class="bg-red-50 rounded-2xl p-5 shadow-sm border border-red-100 flex items-center justify-between">
+            <div>
+                <p class="text-sm font-semibold text-red-800">{{ number_format($stats['failed']) }} Failed Messages</p>
+                <p class="text-xs text-red-600 mt-0.5">Ready to be re-queued</p>
+            </div>
+            <form method="POST" action="{{ route('campaigns.resend-failed', $campaign) }}">
+                @csrf
+                <button type="submit"
+                        class="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-red-700 transition-colors shadow-sm"
+                        onclick="return confirm('Resend all failed messages?')">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Resend Failed
+                </button>
+            </form>
+        </div>
+        @endif
+        @endcan
+    </div>
 
     <!-- Messages Table -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -189,13 +232,17 @@
                         <td class="px-5 py-3.5">
                             <div class="flex items-center gap-2.5">
                                 <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                    <span class="text-xs font-bold text-indigo-700">{{ strtoupper(substr($message->contact->name, 0, 2)) }}</span>
+                                    <span class="text-xs font-bold text-indigo-700">{{ strtoupper(substr($message->contact?->name ?? '?', 0, 2)) }}</span>
                                 </div>
-                                <span class="text-sm font-semibold text-slate-900">{{ $message->contact->name }}</span>
+                                <span class="text-sm font-semibold text-slate-900">{{ $message->contact?->name ?? '[Deleted]' }}</span>
                             </div>
                         </td>
                         <td class="px-5 py-3.5">
-                            <span class="text-sm text-slate-500 font-mono">{{ $message->contact->phone }}</span>
+                            @if($message->contact)
+                                <x-phone :phone="$message->contact->phone" class="text-xs" />
+                            @else
+                                <span class="text-slate-300 text-sm">—</span>
+                            @endif
                         </td>
                         <td class="px-5 py-3.5">
                             <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold

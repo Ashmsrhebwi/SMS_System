@@ -3,12 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Click;
 
 class Campaign extends Model
 {
-    protected $fillable = ['name', 'message_body', 'scheduled_at', 'status', 'total_recipients'];
+    protected $fillable = ['name', 'message_body', 'scheduled_at', 'status', 'total_recipients', 'segment_id', 'created_by'];
 
     protected $casts = [
         'scheduled_at' => 'datetime',
@@ -17,6 +17,16 @@ class Campaign extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function segment(): BelongsTo
+    {
+        return $this->belongsTo(Segment::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function getDeliveredCountAttribute(): int
@@ -53,5 +63,15 @@ class Campaign extends Model
         $delivered = $this->delivered_count;
         if ($delivered === 0) return 0;
         return round(($this->click_count / $delivered) * 100, 1);
+    }
+
+    public function getTotalCostAttribute(): float
+    {
+        return (float) $this->messages()->sum('cost');
+    }
+
+    public function getTotalSegmentsAttribute(): int
+    {
+        return (int) $this->messages()->sum('sms_segments');
     }
 }

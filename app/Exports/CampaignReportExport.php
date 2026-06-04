@@ -16,11 +16,11 @@ class CampaignReportExport implements FromCollection, WithHeadings, WithStyles
     public function collection(): Collection
     {
         return $this->campaign->messages()
-            ->with(['contact', 'click'])
+            ->with(['contact' => fn($q) => $q->withTrashed(), 'click'])
             ->get()
             ->map(fn($message) => [
-                'name' => $message->contact->name,
-                'phone' => $message->contact->phone,
+                'name' => $message->contact?->name ?? '[Deleted]',
+                'phone' => $message->contact?->phone ?? '—',
                 'status' => $message->status,
                 'error_code' => $message->error_code ?? '-',
                 'error_message' => $message->error_message ?? '-',

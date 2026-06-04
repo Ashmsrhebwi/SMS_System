@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\Message;
+use App\Services\ActivityLogger;
+use App\Services\SmsSegmentCalculator;
 use App\Services\TwilioService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,7 +24,7 @@ class SendSmsJob implements ShouldQueue
 
     public function handle(TwilioService $twilio): void
     {
-        $message = Message::with('contact')->findOrFail($this->messageId);
+        $message = Message::with(['contact', 'campaign'])->findOrFail($this->messageId);
 
         if ($message->status !== 'pending') {
             return;
@@ -36,11 +38,19 @@ class SendSmsJob implements ShouldQueue
                 $statusCallbackUrl
             );
 
+            $segments = SmsSegmentCalculator::segments($message->message_body);
+            $cost     = SmsSegmentCalculator::cost($message->message_body);
+
             $message->update([
-                'twilio_sid' => $sid,
-                'status' => 'queued',
-                'sent_at' => now(),
+                'twilio_sid'   => $sid,
+                'status'       => 'queued',
+                'sent_at'      => now(),
+                'sms_segments' => $segments,
+                'cost'         => $cost,
             ]);
+
+            ActivityLogger::smsSent($message);
+
         } catch (\Exception $e) {
             Log::error('SMS send failed', [
                 'message_id' => $this->messageId,
