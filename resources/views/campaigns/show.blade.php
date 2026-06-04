@@ -82,7 +82,7 @@
             <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Message Template</p>
         </div>
         <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
-            <p class="text-sm text-slate-800 font-mono leading-relaxed whitespace-pre-line">{{ preg_replace('/(\{[a-z_]+\})/', '<span class="text-indigo-600 font-semibold not-italic">$1</span>', e($campaign->message_body)) }}</p>
+            <p class="text-sm text-slate-800 font-mono leading-relaxed whitespace-pre-line">{!! preg_replace('/(\{[a-z_]+\})/', '<span class="text-indigo-600 font-semibold not-italic">$1</span>', e($campaign->message_body)) !!}</p>
         </div>
     </div>
 
