@@ -124,7 +124,7 @@ class AuthController extends Controller
             'not_found' => 'No active OTP found. Please request a new one.',
         ];
 
-        $this->securityLogger->otpFailed($user);
+        $this->securityLogger->otpFailed($user, $result);
 
         return response()->json(['message' => $messages[$result] ?? 'OTP verification failed.'], 422);
     }

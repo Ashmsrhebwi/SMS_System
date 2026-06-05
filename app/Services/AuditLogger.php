@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AuditLog;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 
 class AuditLogger
 {
@@ -25,8 +26,10 @@ class AuditLogger
                 'ip_address'  => request()->ip(),
                 'user_agent'  => self::truncateUserAgent(request()->userAgent()),
             ]);
-        } catch (\Throwable) {
-            // Never break the main flow
+        } catch (\Throwable $e) {
+            Log::error('Audit logging failed: ' . $e->getMessage(), [
+                'action' => $action,
+            ]);
         }
     }
 
@@ -41,7 +44,9 @@ class AuditLogger
                 'ip_address'  => request()->ip(),
                 'user_agent'  => self::truncateUserAgent(request()->userAgent()),
             ]);
-        } catch (\Throwable) {}
+        } catch (\Throwable $e) {
+            Log::error('Auth audit logging failed: ' . $e->getMessage());
+        }
     }
 
     public static function logSecurity(
@@ -59,7 +64,9 @@ class AuditLogger
                 'ip_address'  => request()->ip(),
                 'user_agent'  => self::truncateUserAgent(request()->userAgent()),
             ]);
-        } catch (\Throwable) {}
+        } catch (\Throwable $e) {
+            Log::error('Security audit logging failed: ' . $e->getMessage());
+        }
     }
 
     private static function truncateUserAgent(?string $ua): ?string

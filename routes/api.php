@@ -24,11 +24,12 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:5,1');
         Route::post('forgot-password', [AuthController::class, 'forgotPassword'])
             ->middleware('throttle:5,1');
-        Route::post('reset-password', [AuthController::class, 'resetPassword']);
+        Route::post('reset-password', [AuthController::class, 'resetPassword'])
+            ->middleware('throttle:5,1');
     });
 
     // ── Authenticated ─────────────────────────────────────────────────────────
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureApiUserIsActive::class])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/me', [AuthController::class, 'me']);
 
@@ -43,14 +44,14 @@ Route::prefix('v1')->group(function () {
         Route::get('campaigns/{campaign}/export', [CampaignController::class, 'exportReport']);
         Route::get('campaigns/{campaign}/messages', [CampaignController::class, 'messages']);
 
-        // Contacts
+        // Contacts — literal routes MUST come before apiResource to avoid {contact} capture
+        Route::post('contacts/import',         [ContactController::class, 'import']);
+        Route::get('contacts/export',          [ContactController::class, 'export']);
+        Route::get('contacts/check-duplicate', [ContactController::class, 'checkDuplicate']);
         Route::apiResource('contacts', ContactController::class);
         Route::post('contacts/{contact}/toggle-opt-in', [ContactController::class, 'toggleOptIn']);
-        Route::get('contacts/{contact}/notes', [ContactController::class, 'notes']);
-        Route::post('contacts/{contact}/notes', [ContactController::class, 'storeNote']);
-        Route::post('contacts/import', [ContactController::class, 'import']);
-        Route::get('contacts/export', [ContactController::class, 'export']);
-        Route::get('contacts/check-duplicate', [ContactController::class, 'checkDuplicate']);
+        Route::get('contacts/{contact}/notes',          [ContactController::class, 'notes']);
+        Route::post('contacts/{contact}/notes',         [ContactController::class, 'storeNote']);
 
         // Tags
         Route::apiResource('tags', TagController::class)->only(['index', 'store', 'update', 'destroy']);
@@ -65,9 +66,9 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('template-categories', TemplateCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
 
         // Reports
-        Route::get('reports/costs', [ReportController::class, 'costs']);
+        Route::get('reports/costs',     [ReportController::class, 'costs']);
         Route::get('reports/countries', [ReportController::class, 'countries']);
-        Route::get('reports/delivery', [ReportController::class, 'delivery']);
+        Route::get('reports/delivery',  [ReportController::class, 'delivery']);
 
         // Users (admin only)
         Route::apiResource('users', UserController::class);

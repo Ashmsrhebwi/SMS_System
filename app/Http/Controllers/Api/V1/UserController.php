@@ -69,7 +69,7 @@ class UserController extends Controller
     public function destroy(User $user): JsonResponse
     {
         $this->authorize('delete', $user);
-        AuditLogger::log('delete_user', null, $user->only(['name', 'email', 'role']));
+        AuditLogger::log('delete_user', $user, $user->only(['name', 'email', 'role']));
         $user->delete();
 
         return response()->json(['message' => 'User deleted.']);

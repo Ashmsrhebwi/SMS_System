@@ -7,12 +7,19 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class ContactResource extends JsonResource
 {
+    private function maskPhone(?string $phone, Request $request): ?string
+    {
+        if (!$phone) return null;
+        if ($request->user()?->isAdmin()) return $phone;
+        return substr($phone, 0, -4) . '****';
+    }
+
     public function toArray(Request $request): array
     {
         return [
             'id'         => $this->id,
             'name'       => $this->name,
-            'phone'      => $this->phone,
+            'phone'      => $this->maskPhone($this->phone, $request),
             'email'      => $this->email,
             'opted_in'   => $this->opted_in,
             'last_visit' => $this->last_visit?->toDateString(),

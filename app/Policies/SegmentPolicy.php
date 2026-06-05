@@ -12,6 +12,11 @@ class SegmentPolicy
         return $user->isAdmin();
     }
 
+    public function view(User $user, Segment $segment): bool
+    {
+        return $user->isAdmin();
+    }
+
     public function create(User $user): bool
     {
         return $user->isAdmin();

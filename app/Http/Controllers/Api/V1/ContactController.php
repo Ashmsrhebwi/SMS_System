@@ -169,6 +169,8 @@ class ContactController extends Controller
 
     public function checkDuplicate(Request $request): JsonResponse
     {
+        $this->authorize('viewAny', Contact::class);
+
         $phone     = $request->get('phone');
         $email     = $request->get('email');
         $excludeId = $request->get('exclude_id');

@@ -7,6 +7,13 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class MessageResource extends JsonResource
 {
+    private function maskPhone(?string $phone, Request $request): ?string
+    {
+        if (!$phone) return null;
+        if ($request->user()?->isAdmin()) return $phone;
+        return substr($phone, 0, -4) . '****';
+    }
+
     public function toArray(Request $request): array
     {
         return [
@@ -22,7 +29,7 @@ class MessageResource extends JsonResource
             'contact'       => $this->whenLoaded('contact', fn() => $this->contact ? [
                 'id'    => $this->contact->id,
                 'name'  => $this->contact->name,
-                'phone' => $this->contact->phone,
+                'phone' => $this->maskPhone($this->contact->phone, $request),
             ] : null),
             'click'         => $this->whenLoaded('click', fn() => $this->click ? [
                 'click_count' => $this->click->click_count,

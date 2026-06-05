@@ -26,8 +26,8 @@ class ContactsExport implements FromQuery, WithHeadings, WithMapping
         } elseif ($this->filter === 'segment' && $this->segmentId) {
             $segment = Segment::find($this->segmentId);
             if ($segment) {
-                $service = new SegmentService();
-                $ids = $service->getEligibleContacts($segment)->pluck('id');
+                $service = app(SegmentService::class);
+                $ids = $service->getEligibleContactsQuery($segment)->pluck('id');
                 $query->whereIn('id', $ids);
             }
         } elseif ($this->filter === 'tag' && $this->tagId) {

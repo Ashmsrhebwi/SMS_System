@@ -7,6 +7,7 @@ use App\Models\Contact;
 use App\Models\GlobalBlacklist;
 use App\Models\OptOut;
 use App\Services\ActivityLogger;
+use App\Services\PhoneNormalizerService;
 use Illuminate\Http\Request;
 
 class OptOutController extends Controller
@@ -25,15 +26,15 @@ class OptOutController extends Controller
             'reason' => 'nullable|string|max:500',
         ]);
 
-        $phone  = $data['phone'];
-        $reason = $data['reason'] ?? 'User requested opt-out';
+        $normalizer = app(PhoneNormalizerService::class);
+        $phone      = $normalizer->normalize($data['phone']) ?? $data['phone'];
+        $reason     = $data['reason'] ?? 'User requested opt-out';
 
         Contact::where('phone', $phone)->update(['opted_in' => false]);
 
         OptOut::firstOrCreate(['phone' => $phone], ['reason' => $reason]);
         GlobalBlacklist::firstOrCreate(['phone' => $phone], ['reason' => $reason]);
 
-        // Log activity for the contact
         $contact = Contact::where('phone', $phone)->first();
         if ($contact) {
             ActivityLogger::optedOut($contact);

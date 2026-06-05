@@ -2,32 +2,32 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Campaign;
-use App\Models\Message;
 use App\Services\ActivityLogger;
+use App\Services\CampaignCompletionService;
 use App\Services\TwilioService;
+use App\Models\Message;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
-    public function twilioStatus(Request $request, TwilioService $twilio)
-    {
-        if (app()->isProduction()) {
-            $signature = $request->header('X-Twilio-Signature', '');
-            $url = route('webhooks.twilio.status');
-            $params = $request->post();
+    public function twilioStatus(
+        Request $request,
+        TwilioService $twilio,
+        CampaignCompletionService $completion,
+    ) {
+        $signature = $request->header('X-Twilio-Signature', '');
+        $url       = route('webhooks.twilio.status');
+        $params    = $request->post();
 
-            if (!$twilio->validateRequest($signature, $url, $params)) {
-                Log::warning('Invalid Twilio webhook signature', ['ip' => $request->ip()]);
-                return response('Forbidden', 403);
-            }
+        if (!$twilio->validateRequest($signature, $url, $params)) {
+            Log::warning('Invalid Twilio webhook signature', ['ip' => $request->ip()]);
+            return response('Forbidden', 403);
         }
 
-        $messageSid = $request->input('MessageSid');
+        $messageSid    = $request->input('MessageSid');
         $messageStatus = $request->input('MessageStatus');
-        $errorCode = $request->input('ErrorCode');
+        $errorCode     = $request->input('ErrorCode');
 
         Log::info('Twilio webhook received', ['sid' => $messageSid, 'status' => $messageStatus]);
 
@@ -42,13 +42,23 @@ class WebhookController extends Controller
             return response('OK', 200);
         }
 
-        // Ignore out-of-order callbacks (e.g. "queued" arriving after "delivered")
-        $priority = ['pending' => 0, 'queued' => 1, 'sending' => 2, 'sent' => 3, 'delivered' => 4, 'undelivered' => 4, 'failed' => 4];
-        $currentPriority = $priority[$message->status] ?? 0;
-        $newPriority = $priority[$messageStatus] ?? 0;
+        // Never downgrade out of a terminal state
+        $terminal = ['delivered', 'undelivered', 'failed'];
+        if (in_array($message->status, $terminal, true)) {
+            return response('OK', 200);
+        }
 
-        if ($newPriority < $currentPriority) {
-            Log::info('Twilio webhook: ignoring out-of-order status', ['sid' => $messageSid, 'current' => $message->status, 'incoming' => $messageStatus]);
+        // Reject out-of-order non-terminal callbacks
+        $priority = ['pending' => 0, 'queued' => 1, 'sending' => 2, 'sent' => 3];
+        $currentPriority = $priority[$message->status] ?? 0;
+        $newPriority     = $priority[$messageStatus] ?? 0;
+
+        if (array_key_exists($messageStatus, $priority) && $newPriority < $currentPriority) {
+            Log::info('Twilio webhook: ignoring out-of-order status', [
+                'sid'      => $messageSid,
+                'current'  => $message->status,
+                'incoming' => $messageStatus,
+            ]);
             return response('OK', 200);
         }
 
@@ -59,39 +69,21 @@ class WebhookController extends Controller
         }
 
         if ($errorCode) {
-            $updateData['error_code'] = $errorCode;
+            $updateData['error_code']    = $errorCode;
             $updateData['error_message'] = $request->input('ErrorMessage', '');
         }
 
         $message->update($updateData);
 
-        // Activity logging (reload fresh message with campaign)
         $fresh = $message->fresh(['campaign']);
         if ($messageStatus === 'delivered') {
             ActivityLogger::smsDelivered($fresh);
-        } elseif (in_array($messageStatus, ['failed', 'undelivered'])) {
+        } elseif (in_array($messageStatus, ['failed', 'undelivered'], true)) {
             ActivityLogger::smsFailed($fresh);
         }
 
-        // Check if all messages in campaign are done
-        $this->checkCampaignCompletion($message->campaign_id);
+        $completion->checkAndComplete($message->campaign_id);
 
         return response('OK', 200);
-    }
-
-    private function checkCampaignCompletion(int $campaignId): void
-    {
-        $campaign = Campaign::find($campaignId);
-        if (!$campaign || $campaign->status !== 'sending') {
-            return;
-        }
-
-        $pendingCount = $campaign->messages()
-            ->whereIn('status', ['pending', 'queued', 'sent'])
-            ->count();
-
-        if ($pendingCount === 0) {
-            $campaign->update(['status' => 'completed']);
-        }
     }
 }

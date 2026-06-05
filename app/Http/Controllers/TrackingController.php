@@ -27,6 +27,11 @@ class TrackingController extends Controller
             ActivityLogger::linkClicked($message);
         }
 
+        $parsed = parse_url($click->target_url);
+        if (!in_array($parsed['scheme'] ?? '', ['http', 'https'], true)) {
+            abort(400, 'Invalid redirect target.');
+        }
+
         return redirect($click->target_url);
     }
 }

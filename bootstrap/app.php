@@ -24,6 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Apply security headers to all web responses
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+
+        // Register named middleware aliases
+        $middleware->alias([
+            'active.user' => \App\Http\Middleware\EnsureApiUserIsActive::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

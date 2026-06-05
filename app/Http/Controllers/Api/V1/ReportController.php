@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Campaign;
-use App\Models\Contact;
 use App\Models\Message;
 use App\Services\CountryDetectorService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
@@ -48,53 +48,55 @@ class ReportController extends Controller
     {
         abort_unless(auth()->user()->isAdmin(), 403);
 
-        $contacts  = Contact::select('phone')->get();
-        $byCountry = [];
+        $stats = Cache::remember('report_countries_stats', 3600, function () {
+            $contacts = \App\Models\Contact::select('phone')->get();
+            $byCountry = [];
 
-        foreach ($contacts as $contact) {
-            $country = CountryDetectorService::detect($contact->phone);
-            if (!isset($byCountry[$country])) {
-                $byCountry[$country] = [
-                    'country'       => $country,
-                    'contacts'      => 0,
-                    'messages_sent' => 0,
-                    'delivered'     => 0,
-                    'failed'        => 0,
-                ];
+            foreach ($contacts as $contact) {
+                $country = CountryDetectorService::detect($contact->phone);
+                if (!isset($byCountry[$country])) {
+                    $byCountry[$country] = [
+                        'country'       => $country,
+                        'contacts'      => 0,
+                        'messages_sent' => 0,
+                        'delivered'     => 0,
+                        'failed'        => 0,
+                    ];
+                }
+                $byCountry[$country]['contacts']++;
             }
-            $byCountry[$country]['contacts']++;
-        }
 
-        $messageCounts = Message::join('contacts', 'messages.contact_id', '=', 'contacts.id')
-            ->selectRaw('contacts.phone, messages.status')
-            ->whereNotNull('contacts.phone')
-            ->get();
+            $messageCounts = Message::join('contacts', 'messages.contact_id', '=', 'contacts.id')
+                ->selectRaw('contacts.phone, messages.status')
+                ->whereNotNull('contacts.phone')
+                ->get();
 
-        foreach ($messageCounts as $msg) {
-            $country = CountryDetectorService::detect($msg->phone);
-            if (!isset($byCountry[$country])) {
-                $byCountry[$country] = ['country' => $country, 'contacts' => 0, 'messages_sent' => 0, 'delivered' => 0, 'failed' => 0];
+            foreach ($messageCounts as $msg) {
+                $country = CountryDetectorService::detect($msg->phone);
+                if (!isset($byCountry[$country])) {
+                    $byCountry[$country] = ['country' => $country, 'contacts' => 0, 'messages_sent' => 0, 'delivered' => 0, 'failed' => 0];
+                }
+                if (in_array($msg->status, ['sent', 'delivered', 'failed', 'undelivered', 'queued'])) {
+                    $byCountry[$country]['messages_sent']++;
+                }
+                if ($msg->status === 'delivered') {
+                    $byCountry[$country]['delivered']++;
+                }
+                if (in_array($msg->status, ['failed', 'undelivered'])) {
+                    $byCountry[$country]['failed']++;
+                }
             }
-            if (in_array($msg->status, ['sent', 'delivered', 'failed', 'undelivered', 'queued'])) {
-                $byCountry[$country]['messages_sent']++;
-            }
-            if ($msg->status === 'delivered') {
-                $byCountry[$country]['delivered']++;
-            }
-            if (in_array($msg->status, ['failed', 'undelivered'])) {
-                $byCountry[$country]['failed']++;
-            }
-        }
 
-        $stats = collect(array_values($byCountry))
-            ->map(function ($row) {
-                $row['delivery_rate'] = $row['messages_sent'] > 0
-                    ? round(($row['delivered'] / $row['messages_sent']) * 100, 1)
-                    : 0;
-                return $row;
-            })
-            ->sortByDesc('contacts')
-            ->values();
+            return collect(array_values($byCountry))
+                ->map(function ($row) {
+                    $row['delivery_rate'] = $row['messages_sent'] > 0
+                        ? round(($row['delivered'] / $row['messages_sent']) * 100, 1)
+                        : 0;
+                    return $row;
+                })
+                ->sortByDesc('contacts')
+                ->values();
+        });
 
         return response()->json([
             'data'          => $stats,

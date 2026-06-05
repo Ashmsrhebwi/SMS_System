@@ -72,7 +72,7 @@ class SegmentController extends Controller
     {
         $this->authorize('view', $segment);
 
-        $contacts = $this->segmentService->getEligibleContacts($segment)
+        $contacts = $this->segmentService->getEligibleContactsQuery($segment)
             ->paginate(50);
 
         return response()->json($contacts);

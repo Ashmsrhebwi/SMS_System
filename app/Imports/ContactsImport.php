@@ -3,6 +3,8 @@
 namespace App\Imports;
 
 use App\Models\Contact;
+use App\Models\GlobalBlacklist;
+use App\Models\OptOut;
 use App\Services\ActivityLogger;
 use App\Services\PhoneNormalizerService;
 use Illuminate\Support\Collection;
@@ -75,11 +77,29 @@ class ContactsImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
+            // Determine opted_in: respect spreadsheet column, default true unless blacklisted
+            $isBlacklisted = GlobalBlacklist::where('phone', $normalizedPhone)->exists()
+                          || OptOut::where('phone', $normalizedPhone)->exists();
+
+            if ($isBlacklisted) {
+                $this->errors[] = "Row {$rowNum}: Phone {$normalizedPhone} is on the opt-out/blacklist (skipped)";
+                $this->skipped++;
+                continue;
+            }
+
+            // Honour explicit opted_in column from spreadsheet (1/true/yes = in, 0/false/no = out)
+            $rawOptIn = $row['opted_in'] ?? $row['opt_in'] ?? null;
+            if ($rawOptIn !== null && $rawOptIn !== '') {
+                $optedIn = in_array(strtolower((string) $rawOptIn), ['1', 'true', 'yes'], true);
+            } else {
+                $optedIn = true;
+            }
+
             $contact = Contact::create([
                 'name'       => $name,
                 'phone'      => $normalizedPhone,
                 'email'      => $email ?: null,
-                'opted_in'   => true,
+                'opted_in'   => $optedIn,
                 'last_visit' => $lastVisit,
                 'notes'      => $row['notes'] ?? null,
             ]);

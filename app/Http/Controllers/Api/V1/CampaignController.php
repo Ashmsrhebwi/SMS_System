@@ -15,6 +15,7 @@ use App\Services\SegmentService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 
 class CampaignController extends Controller
@@ -51,18 +52,20 @@ class CampaignController extends Controller
             'segment_id'   => 'nullable|exists:segments,id',
         ]);
 
+        $sendNow = $request->boolean('send_now');
+
         $campaign = Campaign::create([
             'name'         => $data['name'],
             'message_body' => $data['message_body'],
             'scheduled_at' => $data['scheduled_at'] ?? null,
-            'status'       => $data['scheduled_at'] ? 'scheduled' : 'draft',
+            'status'       => $sendNow ? 'sending' : ($data['scheduled_at'] ? 'scheduled' : 'draft'),
             'segment_id'   => $data['segment_id'] ?? null,
             'created_by'   => auth()->id(),
         ]);
 
         AuditLogger::log('create_campaign', $campaign, null, $campaign->only(['name', 'status']));
 
-        if ($request->boolean('send_now')) {
+        if ($sendNow) {
             DispatchCampaignJob::dispatch($campaign->id);
             AuditLogger::log('send_campaign', $campaign, null, ['trigger' => 'send_now']);
         } elseif ($data['scheduled_at'] ?? null) {
@@ -80,22 +83,35 @@ class CampaignController extends Controller
 
         $campaign->load('segment', 'creator');
 
+        $agg = $campaign->messages()
+            ->selectRaw("
+                COUNT(*) as total,
+                SUM(status = 'pending')                            as pending,
+                SUM(status = 'queued')                             as queued,
+                SUM(status = 'sent')                               as sent,
+                SUM(status = 'delivered')                          as delivered,
+                SUM(status IN ('failed','undelivered'))            as failed,
+                SUM(COALESCE(cost, 0))                             as total_cost,
+                SUM(COALESCE(sms_segments, 0))                     as total_segments
+            ")
+            ->first();
+
         $stats = [
-            'total'     => $campaign->messages()->count(),
-            'pending'   => $campaign->messages()->where('status', 'pending')->count(),
-            'queued'    => $campaign->messages()->where('status', 'queued')->count(),
-            'sent'      => $campaign->messages()->where('status', 'sent')->count(),
-            'delivered' => $campaign->messages()->where('status', 'delivered')->count(),
-            'failed'    => $campaign->messages()->whereIn('status', ['failed', 'undelivered'])->count(),
-            'clicked'   => $campaign->click_count,
+            'total'          => (int) $agg->total,
+            'pending'        => (int) $agg->pending,
+            'queued'         => (int) $agg->queued,
+            'sent'           => (int) $agg->sent,
+            'delivered'      => (int) $agg->delivered,
+            'failed'         => (int) $agg->failed,
+            'clicked'        => $campaign->click_count,
+            'total_cost'     => (float) $agg->total_cost,
+            'total_segments' => (int) $agg->total_segments,
         ];
 
         $total = max($stats['total'], 1);
         $stats['delivery_rate'] = $stats['total'] > 0 ? round(($stats['delivered'] / $total) * 100, 1) : 0;
         $stats['failure_rate']  = $stats['total'] > 0 ? round(($stats['failed'] / $total) * 100, 1) : 0;
         $stats['click_rate']    = $stats['delivered'] > 0 ? round(($stats['clicked'] / $stats['delivered']) * 100, 1) : 0;
-        $stats['total_cost']    = (float) $campaign->messages()->sum('cost');
-        $stats['total_segments'] = (int) $campaign->messages()->sum('sms_segments');
 
         return response()->json([
             'campaign' => new CampaignResource($campaign),
@@ -143,12 +159,17 @@ class CampaignController extends Controller
     {
         $this->authorize('send', $campaign);
 
-        if (!in_array($campaign->status, ['draft', 'scheduled'])) {
+        $rows = DB::table('campaigns')
+            ->where('id', $campaign->id)
+            ->whereIn('status', ['draft', 'scheduled'])
+            ->update(['status' => 'sending']);
+
+        if (!$rows) {
             return response()->json(['message' => 'Campaign cannot be sent in its current state.'], 422);
         }
 
         DispatchCampaignJob::dispatch($campaign->id);
-        AuditLogger::log('send_campaign', $campaign);
+        AuditLogger::log('send_campaign', $campaign->fresh());
 
         return response()->json(['message' => 'Campaign is being dispatched.']);
     }
