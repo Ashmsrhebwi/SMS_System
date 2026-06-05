@@ -3,15 +3,16 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Services\AuditLogger;
+use App\Services\SecurityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PasswordResetLinkController extends Controller
 {
+    public function __construct(private SecurityLogger $securityLogger) {}
+
     public function create(): View
     {
         return view('auth.forgot-password');
@@ -23,17 +24,11 @@ class PasswordResetLinkController extends Controller
             'email' => ['required', 'email'],
         ]);
 
-        $status = Password::sendResetLink(
-            $request->only('email')
-        );
+        $this->securityLogger->passwordResetRequest($request->input('email'));
 
-        // Log the reset request regardless of whether the email exists
-        // (avoid email enumeration via different log records)
-        AuditLogger::logSecurity('password_reset_requested', null, [
-            'email' => $request->email,
-        ]);
+        $status = Password::sendResetLink($request->only('email'));
 
-        // Always show the same response to prevent email enumeration
-        return back()->with('status', __($status));
+        // Always return the same message to prevent email enumeration
+        return back()->with('status', __('passwords.sent'));
     }
 }

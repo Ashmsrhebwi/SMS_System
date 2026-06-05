@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\AuditLogger;
+use App\Services\SecurityLogger;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +16,8 @@ use Illuminate\View\View;
 
 class NewPasswordController extends Controller
 {
+    public function __construct(private SecurityLogger $securityLogger) {}
+
     public function create(Request $request): View
     {
         return view('auth.reset-password', ['request' => $request]);
@@ -38,14 +40,13 @@ class NewPasswordController extends Controller
                 ])->save();
 
                 event(new PasswordReset($user));
-
-                AuditLogger::logSecurity('password_reset_completed', $user->id);
+                $this->securityLogger->passwordResetSuccess($user);
             }
         );
 
         return $status === Password::PASSWORD_RESET
             ? redirect()->route('login')->with('status', __($status))
             : back()->withInput($request->only('email'))
-                ->withErrors(['email' => __($status)]);
+                    ->withErrors(['email' => __($status)]);
     }
 }

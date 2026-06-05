@@ -3,65 +3,87 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\LoginRequest;
-use App\Services\AuditLogger;
+use App\Models\User;
+use App\Services\OtpService;
+use App\Services\SecurityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
+    public function __construct(
+        private OtpService     $otpService,
+        private SecurityLogger $securityLogger,
+    ) {}
+
     public function create(): View
     {
         return view('auth.login');
     }
 
-    public function store(LoginRequest $request): RedirectResponse
+    public function store(Request $request): RedirectResponse
     {
-        // Validate credentials WITHOUT logging in (rate-limited)
-        $user = $request->validateCredentials();
+        $request->validate([
+            'email'    => ['required', 'string', 'email'],
+            'password' => ['required', 'string'],
+        ]);
 
-        // ── Step 2: OTP ───────────────────────────────────────────────────────
+        $throttleKey = 'login:' . Str::lower($request->input('email')) . '|' . $request->ip();
 
-        // Rate-limit OTP send requests: 5 per hour per email address
-        $otpRateLimiterKey = 'otp-request:' . strtolower($user->email);
-
-        if (\Illuminate\Support\Facades\RateLimiter::tooManyAttempts($otpRateLimiterKey, 5)) {
-            $seconds = \Illuminate\Support\Facades\RateLimiter::availableIn($otpRateLimiterKey);
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'email' => 'Too many verification code requests. Please wait ' . ceil($seconds / 60) . ' minute(s).',
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            throw ValidationException::withMessages([
+                'email' => __('auth.throttle', [
+                    'seconds' => $seconds,
+                    'minutes' => ceil($seconds / 60),
+                ]),
             ]);
         }
 
-        // Generate and send OTP
-        [$sessionToken] = OtpVerificationController::generateAndSendOtp($user, $request);
+        $user = User::where('email', $request->input('email'))->first();
 
-        \Illuminate\Support\Facades\RateLimiter::hit($otpRateLimiterKey, 3600);
+        if (!$user || !Hash::check($request->input('password'), $user->password)) {
+            RateLimiter::hit($throttleKey, 60);
+            $this->securityLogger->loginFailed($request->input('email'));
 
-        // Store pending auth state in session (10-minute window for OTP page)
-        $request->session()->put('auth_pending', [
-            'user_id'       => $user->id,
-            'session_token' => $sessionToken,
-            'remember'      => $request->boolean('remember'),
-            'expires_at'    => now()->addMinutes(10)->timestamp,
-        ]);
+            throw ValidationException::withMessages([
+                'email' => __('auth.failed'),
+            ]);
+        }
 
-        AuditLogger::logSecurity('otp_requested', $user->id);
+        RateLimiter::clear($throttleKey);
 
-        return redirect()->route('login.otp');
+        if (!$this->otpService->canRequest($user)) {
+            $seconds = $this->otpService->remainingRequestSeconds($user);
+            throw ValidationException::withMessages([
+                'email' => 'Too many OTP requests. Please try again in ' . ceil($seconds / 60) . ' minute(s).',
+            ]);
+        }
+
+        $this->otpService->generate($user);
+        $this->securityLogger->otpSent($user);
+
+        $request->session()->put('auth.otp_user_id', $user->id);
+        $request->session()->put('auth.remember', $request->boolean('remember'));
+
+        return redirect()->route('otp.verify');
     }
 
     public function destroy(Request $request): RedirectResponse
     {
-        $user = Auth::user();
+        if (Auth::check()) {
+            $this->securityLogger->logout(Auth::user());
+        }
+
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-
-        if ($user) {
-            AuditLogger::logAuth('logout', $user);
-        }
 
         return redirect('/');
     }
