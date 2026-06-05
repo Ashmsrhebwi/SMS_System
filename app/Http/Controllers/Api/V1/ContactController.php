@@ -88,7 +88,7 @@ class ContactController extends Controller
     public function show(Contact $contact): JsonResponse
     {
         $this->authorize('view', $contact);
-        $contact->load(['tags', 'notes.author', 'activities.user']);
+        $contact->loadCount('messages')->load(['tags', 'notes.author', 'activities.user']);
 
         return (new ContactResource($contact))->response();
     }
