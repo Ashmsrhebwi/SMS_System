@@ -59,14 +59,15 @@ class AuthenticatedSessionController extends Controller
 
         RateLimiter::clear($throttleKey);
 
-        if (!$this->otpService->canRequest($user)) {
+        $generated = $this->otpService->generate($user);
+
+        if ($generated === false) {
             $seconds = $this->otpService->remainingRequestSeconds($user);
             throw ValidationException::withMessages([
                 'email' => 'Too many OTP requests. Please try again in ' . ceil($seconds / 60) . ' minute(s).',
             ]);
         }
 
-        $this->otpService->generate($user);
         $this->securityLogger->otpSent($user);
 
         $request->session()->put('auth.otp_user_id', $user->id);
