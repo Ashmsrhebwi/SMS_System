@@ -1,13 +1,25 @@
 import React, { useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
+import { Tag, Plus, Edit2, Trash2 } from 'lucide-react'
 import api from '../services/api'
-import ErrorAlert from '../components/ErrorAlert'
+import { useToast } from '../context/ToastContext'
+import { PageHeader } from '../components/layout/PageHeader'
+import { Card } from '../components/ui/Card'
+import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
+import { Badge } from '../components/ui/Badge'
+import { Modal } from '../components/ui/Modal'
+import { EmptyState } from '../components/ui/EmptyState'
+import { Skeleton } from '../components/ui/Skeleton'
+
+const PRESET_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899', '#14b8a6', '#f97316']
 
 export default function TagsPage() {
+  const { toast }             = useToast()
   const [tags, setTags]       = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState(null)
+  const [modal, setModal]     = useState(null) // null | 'create' | tag object
   const [form, setForm]       = useState({ name: '', color: '#6366f1' })
-  const [editing, setEditing] = useState(null)
   const [saving, setSaving]   = useState(false)
 
   const load = () => {
@@ -17,21 +29,23 @@ export default function TagsPage() {
 
   useEffect(() => { load() }, [])
 
-  const save = async (e) => {
-    e.preventDefault()
+  const openCreate = () => { setForm({ name: '', color: '#6366f1' }); setModal('create') }
+  const openEdit   = (t) => { setForm({ name: t.name, color: t.color ?? '#6366f1' }); setModal(t) }
+
+  const save = async () => {
     setSaving(true)
-    setError(null)
     try {
-      if (editing) {
-        await api.put(`/tags/${editing.id}`, form)
-      } else {
+      if (modal === 'create') {
         await api.post('/tags', form)
+        toast.success('Tag created')
+      } else {
+        await api.put(`/tags/${modal.id}`, form)
+        toast.success('Tag updated')
       }
-      setEditing(null)
-      setForm({ name: '', color: '#6366f1' })
+      setModal(null)
       load()
     } catch (err) {
-      setError(err)
+      toast.error(err?.response?.data?.message ?? 'Save failed')
     } finally {
       setSaving(false)
     }
@@ -41,66 +55,97 @@ export default function TagsPage() {
     if (!confirm(`Delete tag "${t.name}"? This removes it from all contacts.`)) return
     try {
       await api.delete(`/tags/${t.id}`)
+      toast.success('Tag deleted')
       load()
-    } catch (err) {
-      setError(err)
+    } catch {
+      toast.error('Delete failed')
     }
   }
 
   return (
-    <div className="max-w-xl space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Tags</h1>
-      <ErrorAlert error={error} />
-
-      <div className="card space-y-4">
-        <h2 className="font-semibold text-gray-900">{editing ? 'Edit Tag' : 'New Tag'}</h2>
-        <form onSubmit={save} className="flex gap-2 items-end">
-          <div className="flex-1">
-            <label className="label">Name</label>
-            <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required />
-          </div>
-          <div>
-            <label className="label">Color</label>
-            <input type="color" className="h-9 w-16 rounded border border-gray-300 p-0.5 cursor-pointer" value={form.color ?? '#6366f1'}
-              onChange={e => setForm(p => ({ ...p, color: e.target.value }))} />
-          </div>
-          <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : editing ? 'Update' : 'Add'}</button>
-          {editing && <button type="button" className="btn-secondary" onClick={() => { setEditing(null); setForm({ name: '', color: '#6366f1' }) }}>Cancel</button>}
-        </form>
-      </div>
+    <div className="space-y-5">
+      <PageHeader title="Tags" subtitle={`${tags.length} tags`}
+        action={<Button leftIcon={<Plus size={14} />} onClick={openCreate}>New Tag</Button>} />
 
       {loading ? (
-        <div className="py-8 text-center text-gray-400">Loading…</div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+        </div>
+      ) : !tags.length ? (
+        <Card><EmptyState icon={Tag} title="No tags yet" description="Tags help you segment and organize contacts." /></Card>
       ) : (
-        <div className="card p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Tag</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Contacts</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {tags.map(t => (
-                <tr key={t.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <span className="badge" style={{ backgroundColor: (t.color ?? '#6366f1') + '22', color: t.color ?? '#6366f1' }}>
-                      {t.name}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{t.contacts_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button className="text-xs text-brand-600 hover:text-brand-800" onClick={() => { setEditing(t); setForm({ name: t.name, color: t.color ?? '#6366f1' }) }}>Edit</button>
-                    <button className="text-xs text-red-500 hover:text-red-700 ml-3" onClick={() => remove(t)}>Delete</button>
-                  </td>
-                </tr>
-              ))}
-              {tags.length === 0 && <tr><td colSpan={3} className="py-8 text-center text-gray-400">No tags yet</td></tr>}
-            </tbody>
-          </table>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {tags.map((t, i) => (
+            <motion.div
+              key={t.id}
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              className="flex items-center gap-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] px-4 py-3 group hover:shadow-[var(--shadow-sm)] transition-shadow"
+            >
+              <div className="h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-white font-bold text-sm"
+                style={{ background: t.color ?? '#6366f1' }}>
+                {t.name[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-[var(--text-primary)] truncate">{t.name}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">{t.contacts_count ?? 0} contacts</p>
+              </div>
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                <button onClick={() => openEdit(t)} className="p-1.5 rounded-lg hover:bg-[var(--surface-2)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
+                  <Edit2 size={13} />
+                </button>
+                <button onClick={() => remove(t)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-[var(--text-tertiary)] hover:text-red-600 transition-colors">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </motion.div>
+          ))}
         </div>
       )}
+
+      <Modal
+        open={!!modal}
+        onClose={() => setModal(null)}
+        title={modal === 'create' ? 'New Tag' : 'Edit Tag'}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
+            <Button loading={saving} onClick={save}>Save Tag</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input label="Tag name" required value={form.name}
+            onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+          <div>
+            <p className="text-sm font-medium text-[var(--text-primary)] mb-2">Color</p>
+            <div className="flex gap-2 flex-wrap">
+              {PRESET_COLORS.map(c => (
+                <button key={c} type="button"
+                  onClick={() => setForm(p => ({ ...p, color: c }))}
+                  className="h-7 w-7 rounded-full border-2 transition-all"
+                  style={{
+                    background: c,
+                    borderColor: form.color === c ? '#fff' : 'transparent',
+                    boxShadow: form.color === c ? `0 0 0 2px ${c}` : 'none',
+                  }}
+                />
+              ))}
+              <input type="color" value={form.color}
+                onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
+                className="h-7 w-7 rounded-full cursor-pointer border border-[var(--border)] p-0.5" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <p className="text-sm text-[var(--text-secondary)]">Preview:</p>
+            <Badge size="md" style={{ background: form.color + '22', color: form.color, borderColor: form.color + '44' }}>
+              {form.name || 'Tag name'}
+            </Badge>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -1,152 +1,172 @@
-import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useCallback, useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
+import { Search, Upload, Download, Plus, Users, Filter } from 'lucide-react'
 import api from '../services/api'
-import Pagination from '../components/Pagination'
-import ErrorAlert from '../components/ErrorAlert'
+import { useToast } from '../context/ToastContext'
+import { ContactDrawer } from '../features/contacts/ContactDrawer'
+import { PageHeader } from '../components/layout/PageHeader'
+import { Card } from '../components/ui/Card'
+import { Button } from '../components/ui/Button'
+import { Input, Select } from '../components/ui/Input'
+import { Badge, StatusBadge } from '../components/ui/Badge'
+import { Pagination } from '../components/ui/Pagination'
+import { SkeletonTable } from '../components/ui/Skeleton'
+import { EmptyState } from '../components/ui/EmptyState'
+import { Avatar } from '../components/ui/Avatar'
+import { cn } from '../lib/cn'
 
 export default function ContactsPage() {
-  const [data, setData]       = useState(null)
-  const [tags, setTags]       = useState([])
-  const [page, setPage]       = useState(1)
-  const [search, setSearch]   = useState('')
-  const [tagFilter, setTagFilter] = useState('')
-  const [optIn, setOptIn]     = useState('')
-  const [loading, setLoading] = useState(true)
-  const [importFile, setImportFile] = useState(null)
-  const [importing, setImporting]   = useState(false)
-  const [importResult, setImportResult] = useState(null)
-  const [error, setError]     = useState(null)
+  const { toast }               = useToast()
+  const [data, setData]         = useState(null)
+  const [tags, setTags]         = useState([])
+  const [page, setPage]         = useState(1)
+  const [search, setSearch]     = useState('')
+  const [tagFilter, setTag]     = useState('')
+  const [optIn, setOptIn]       = useState('')
+  const [loading, setLoading]   = useState(true)
+  const [drawerContact, setDrawer] = useState(null)
+  const [importing, setImporting]  = useState(false)
 
-  const load = (p = 1) => {
+  const load = useCallback((p = 1) => {
     setLoading(true)
     api.get('/contacts', { params: { page: p, search, tag: tagFilter, opt_in: optIn } })
       .then(r => setData(r.data))
       .finally(() => setLoading(false))
-  }
+  }, [search, tagFilter, optIn])
 
   useEffect(() => { api.get('/tags').then(r => setTags(r.data.data ?? [])) }, [])
   useEffect(() => { load(1); setPage(1) }, [search, tagFilter, optIn])
-  useEffect(() => { load(page) }, [page])
+  useEffect(() => { if (page > 1) load(page) }, [page])
 
   const handleImport = async (e) => {
-    e.preventDefault()
-    if (!importFile) return
+    const file = e.target.files?.[0]
+    if (!file) return
     setImporting(true)
-    setError(null)
     const fd = new FormData()
-    fd.append('file', importFile)
+    fd.append('file', file)
     fd.append('duplicate_action', 'skip')
     try {
       const res = await api.post('/contacts/import', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setImportResult(res.data)
+      toast.success(`Imported ${res.data.imported} · Updated ${res.data.updated} · Skipped ${res.data.skipped}`)
       load(1)
-    } catch (err) {
-      setError(err)
+    } catch {
+      toast.error('Import failed. Check your file format.')
     } finally {
       setImporting(false)
-      setImportFile(null)
+      e.target.value = ''
     }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
-        <div className="flex gap-2">
-          <a href="/api/v1/contacts/export" target="_blank" rel="noreferrer" className="btn-secondary text-xs">
-            Export
-          </a>
-          <Link to="/contacts/new" className="btn-primary">+ Add Contact</Link>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Contacts"
+        subtitle={`${data?.meta?.total ?? 0} contacts`}
+        action={
+          <div className="flex items-center gap-2">
+            <label>
+              <Button variant="secondary" leftIcon={<Upload size={14} />} loading={importing} as="span" className="cursor-pointer">
+                Import
+              </Button>
+              <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={handleImport} />
+            </label>
+            <a href="/api/v1/contacts/export" target="_blank" rel="noreferrer">
+              <Button variant="secondary" leftIcon={<Download size={14} />}>Export</Button>
+            </a>
+          </div>
+        }
+      />
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        <input
-          className="input w-56"
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Input
           placeholder="Search name, phone, email…"
+          leftIcon={<Search size={14} />}
           value={search}
           onChange={e => setSearch(e.target.value)}
+          className="sm:w-72"
         />
-        <select className="input w-40" value={tagFilter} onChange={e => setTagFilter(e.target.value)}>
+        <Select value={tagFilter} onChange={e => setTag(e.target.value)} className="sm:w-40">
           <option value="">All tags</option>
           {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <select className="input w-36" value={optIn} onChange={e => setOptIn(e.target.value)}>
+        </Select>
+        <Select value={optIn} onChange={e => setOptIn(e.target.value)} className="sm:w-36">
           <option value="">All statuses</option>
           <option value="1">Opted in</option>
           <option value="0">Opted out</option>
-        </select>
+        </Select>
       </div>
 
-      {/* Import */}
-      <form onSubmit={handleImport} className="flex items-center gap-2 text-sm">
-        <input type="file" accept=".xlsx,.xls,.csv" onChange={e => setImportFile(e.target.files[0])} className="text-xs" />
-        <button type="submit" className="btn-secondary text-xs" disabled={!importFile || importing}>
-          {importing ? 'Importing…' : 'Import'}
-        </button>
-      </form>
-
-      <ErrorAlert error={error} />
-
-      {importResult && (
-        <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
-          Import complete: {importResult.imported} imported, {importResult.updated} updated, {importResult.skipped} skipped.
-        </div>
+      {loading ? (
+        <SkeletonTable rows={8} />
+      ) : !data?.data?.length ? (
+        <Card>
+          <EmptyState
+            icon={Users}
+            title="No contacts found"
+            description="Import contacts or adjust your filters."
+          />
+        </Card>
+      ) : (
+        <Card padding={false} className="overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
+                {['Contact', 'Phone', 'Email', 'Tags', 'Status', 'Added'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {data.data.map((c, i) => (
+                <motion.tr
+                  key={c.id}
+                  className="table-row-hover"
+                  onClick={() => setDrawer(c.id)}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: i * 0.02 }}
+                >
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={c.name} size="sm" />
+                      <span className="text-sm font-medium text-[var(--text-primary)]">{c.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5 text-sm text-[var(--text-secondary)]">{c.phone}</td>
+                  <td className="px-4 py-3.5 text-sm text-[var(--text-secondary)]">{c.email ?? '—'}</td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex flex-wrap gap-1">
+                      {c.tags?.slice(0, 2).map(t => (
+                        <Badge key={t.id} variant="brand" size="sm">{t.name}</Badge>
+                      ))}
+                      {c.tags?.length > 2 && (
+                        <Badge variant="default" size="sm">+{c.tags.length - 2}</Badge>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <StatusBadge status={c.opted_in ? 'opted_in' : 'opted_out'} />
+                  </td>
+                  <td className="px-4 py-3.5 text-xs text-[var(--text-tertiary)]">
+                    {new Date(c.created_at).toLocaleDateString()}
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+          <Pagination meta={data?.meta} onPageChange={setPage} />
+        </Card>
       )}
 
-      <div className="card p-0 overflow-hidden">
-        {loading ? (
-          <div className="py-12 text-center text-gray-400">Loading…</div>
-        ) : (
-          <>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Name</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Phone</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Email</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Tags</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Opt-in</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Added</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data?.data?.map(c => (
-                  <tr key={c.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <Link to={`/contacts/${c.id}`} className="font-medium text-gray-900 hover:text-brand-600">{c.name}</Link>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{c.phone}</td>
-                    <td className="px-4 py-3 text-gray-500">{c.email ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {c.tags?.map(t => (
-                          <span key={t.id} className="badge badge-blue" style={t.color ? { backgroundColor: t.color + '22', color: t.color } : {}}>
-                            {t.name}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {c.opted_in
-                        ? <span className="badge-green">Opted in</span>
-                        : <span className="badge-red">Opted out</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-400">{new Date(c.created_at).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-                {data?.data?.length === 0 && (
-                  <tr><td colSpan={6} className="py-12 text-center text-gray-400">No contacts found</td></tr>
-                )}
-              </tbody>
-            </table>
-            <Pagination meta={data?.meta} onPageChange={setPage} />
-          </>
-        )}
-      </div>
+      <ContactDrawer
+        contactId={drawerContact}
+        open={!!drawerContact}
+        onClose={() => setDrawer(null)}
+        onUpdate={() => load(page)}
+      />
     </div>
   )
 }

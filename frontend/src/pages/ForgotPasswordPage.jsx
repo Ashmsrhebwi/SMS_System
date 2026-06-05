@@ -1,73 +1,93 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { KeyRound, Mail, ArrowLeft } from 'lucide-react'
 import api from '../services/api'
-import ErrorAlert from '../components/ErrorAlert'
+import { Input } from '../components/ui/Input'
+import { Button } from '../components/ui/Button'
+import { fadeUp } from '../lib/animations'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail]     = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState(null)
   const [sent, setSent]       = useState(false)
+  const [error, setError]     = useState('')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setError(null)
+    setError('')
     setLoading(true)
     try {
       await api.post('/auth/forgot-password', { email })
       setSent(true)
-    } catch (err) {
-      setError(err)
+    } catch {
+      setError('Unable to process your request. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-950 to-brand-800 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] p-6">
+      <motion.div className="w-full max-w-sm" {...fadeUp}>
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 mb-4">
-            <span className="text-3xl">🔑</span>
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-brand-50 dark:bg-brand-950 text-brand-600 mb-4">
+            <KeyRound size={32} strokeWidth={1.5} />
           </div>
-          <h1 className="text-2xl font-bold text-white">Reset Password</h1>
-          <p className="text-brand-200 text-sm mt-1">We'll send a reset link to your email</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+            {sent ? 'Check your email' : 'Reset password'}
+          </h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-1.5">
+            {sent
+              ? `If an account exists for ${email}, a reset link has been sent.`
+              : "We'll send a reset link to your inbox"
+            }
+          </p>
         </div>
 
-        <div className="card">
+        <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6 shadow-[var(--shadow-md)]">
           {sent ? (
-            <div className="text-center py-4">
-              <div className="text-4xl mb-3">✉️</div>
-              <p className="font-medium text-gray-900">Check your email</p>
-              <p className="text-sm text-gray-600 mt-1">If an account exists for {email}, a reset link has been sent.</p>
-              <Link to="/login" className="btn-primary mt-4 inline-block">Back to Login</Link>
+            <div className="text-center py-2">
+              <div className="text-5xl mb-4">📬</div>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">Didn't get it? Check your spam folder or try again.</p>
+              <Button variant="secondary" className="w-full" onClick={() => setSent(false)}>
+                Try again
+              </Button>
             </div>
           ) : (
-            <>
-              <ErrorAlert error={error} />
-              <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                <div>
-                  <label className="label">Email address</label>
-                  <input
-                    type="email"
-                    className="input"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                  />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-3 py-2.5 text-sm text-red-700">
+                  {error}
                 </div>
-                <button type="submit" className="btn-primary w-full" disabled={loading}>
-                  {loading ? 'Sending…' : 'Send Reset Link'}
-                </button>
-                <div className="text-center">
-                  <Link to="/login" className="text-sm text-brand-600 hover:text-brand-700">Back to Login</Link>
-                </div>
-              </form>
-            </>
+              )}
+              <Input
+                label="Email address"
+                type="email"
+                placeholder="you@feraclinic.com"
+                leftIcon={<Mail size={15} />}
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+              <Button type="submit" loading={loading} className="w-full" size="lg">
+                Send reset link
+              </Button>
+            </form>
           )}
         </div>
-      </div>
+
+        <div className="mt-5 text-center">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <ArrowLeft size={14} />
+            Back to sign in
+          </Link>
+        </div>
+      </motion.div>
     </div>
   )
 }

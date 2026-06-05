@@ -1,23 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import ErrorAlert from '../components/ErrorAlert'
+import { useToast } from '../context/ToastContext'
+import { Button } from '../components/ui/Button'
+import { fadeUp } from '../lib/animations'
 
 export default function OtpPage() {
   const { verifyOtp, resendOtp } = useAuth()
-  const navigate = useNavigate()
+  const navigate  = useNavigate()
+  const { toast } = useToast()
 
   const maskedEmail = sessionStorage.getItem('otp_masked_email') ?? 'your email'
-  const [digits, setDigits]     = useState(Array(6).fill(''))
-  const [loading, setLoading]   = useState(false)
+  const [digits, setDigits]       = useState(Array(6).fill(''))
+  const [loading, setLoading]     = useState(false)
   const [resending, setResending] = useState(false)
-  const [error, setError]       = useState(null)
-  const [success, setSuccess]   = useState('')
+  const [error, setError]         = useState('')
   const inputs = useRef([])
 
-  useEffect(() => {
-    inputs.current[0]?.focus()
-  }, [])
+  useEffect(() => { inputs.current[0]?.focus() }, [])
 
   const handleChange = (i, val) => {
     if (!/^\d?$/.test(val)) return
@@ -25,6 +27,10 @@ export default function OtpPage() {
     next[i] = val
     setDigits(next)
     if (val && i < 5) inputs.current[i + 1]?.focus()
+
+    // Auto-submit when all filled
+    const full = next.join('')
+    if (full.length === 6) submit(full)
   }
 
   const handleKeyDown = (i, e) => {
@@ -38,64 +44,74 @@ export default function OtpPage() {
     if (pasted.length === 6) {
       setDigits(pasted.split(''))
       inputs.current[5]?.focus()
+      setTimeout(() => submit(pasted), 50)
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    const otp = digits.join('')
-    if (otp.length < 6) return
-    setError(null)
+  const submit = async (otp) => {
+    setError('')
     setLoading(true)
     try {
       await verifyOtp(otp)
+      toast.success('Signed in successfully')
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err)
+      setError(err?.response?.data?.message ?? 'Invalid or expired code.')
       setDigits(Array(6).fill(''))
-      inputs.current[0]?.focus()
+      setTimeout(() => inputs.current[0]?.focus(), 50)
     } finally {
       setLoading(false)
     }
   }
 
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    submit(digits.join(''))
+  }
+
   const handleResend = async () => {
     setResending(true)
-    setError(null)
-    setSuccess('')
+    setError('')
     try {
       await resendOtp()
-      setSuccess('A new code has been sent to your email.')
+      toast.success('A new code has been sent.')
       setDigits(Array(6).fill(''))
       inputs.current[0]?.focus()
     } catch (err) {
-      setError(err)
+      toast.error(err?.response?.data?.message ?? 'Too many requests.')
     } finally {
       setResending(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-950 to-brand-800 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] p-6">
+      <motion.div className="w-full max-w-sm" {...fadeUp}>
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 mb-4">
-            <span className="text-3xl">🔐</span>
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-brand-50 dark:bg-brand-950 text-brand-600 mb-4">
+            <ShieldCheck size={32} strokeWidth={1.5} />
           </div>
-          <h1 className="text-2xl font-bold text-white">Two-Factor Authentication</h1>
-          <p className="text-brand-200 text-sm mt-1">Enter the 6-digit code sent to {maskedEmail}</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Two-factor authentication</h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-1.5">
+            Enter the 6-digit code sent to{' '}
+            <span className="font-medium text-[var(--text-primary)]">{maskedEmail}</span>
+          </p>
         </div>
 
-        <div className="card">
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-4">
-            Code expires in 5 minutes · Maximum 3 attempts
+        <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-6 shadow-[var(--shadow-md)]">
+          <div className="rounded-lg bg-[var(--warning-bg)] border border-[var(--warning-border)] px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400 mb-5">
+            Code expires in <strong>5 minutes</strong> · Maximum <strong>3 attempts</strong>
           </div>
 
-          <ErrorAlert error={error} />
-          {success && <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800 mb-2">{success}</div>}
+          {error && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-3 py-2.5 text-sm text-red-700">
+              <AlertCircle size={14} className="shrink-0" />
+              {error}
+            </div>
+          )}
 
-          <form onSubmit={handleSubmit} className="mt-4 space-y-6">
-            <div className="flex justify-center gap-2" onPaste={handlePaste}>
+          <form onSubmit={handleSubmit}>
+            <div className="flex justify-center gap-2 mb-6" onPaste={handlePaste}>
               {digits.map((d, i) => (
                 <input
                   key={i}
@@ -106,32 +122,38 @@ export default function OtpPage() {
                   value={d}
                   onChange={e => handleChange(i, e.target.value)}
                   onKeyDown={e => handleKeyDown(i, e)}
-                  className="w-12 h-14 text-center text-2xl font-bold rounded-lg border-2 border-gray-300 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className="w-11 h-13 text-center text-xl font-bold rounded-xl border-2 border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-primary)] transition-all duration-150 focus:border-brand-500 focus:bg-[var(--surface)] focus:outline-none focus:ring-0 caret-brand-600"
+                  disabled={loading}
                 />
               ))}
             </div>
 
-            <button
+            <Button
               type="submit"
-              className="btn-primary w-full py-2.5"
-              disabled={loading || digits.join('').length < 6}
+              className="w-full"
+              loading={loading}
+              disabled={digits.join('').length < 6}
+              size="lg"
             >
-              {loading ? 'Verifying…' : 'Verify Code'}
-            </button>
+              Verify code
+            </Button>
           </form>
 
-          <div className="mt-4 text-center text-sm text-gray-600">
-            Didn't receive a code?{' '}
-            <button
-              onClick={handleResend}
-              disabled={resending}
-              className="text-brand-600 hover:text-brand-700 font-medium disabled:opacity-50"
-            >
-              {resending ? 'Sending…' : 'Resend'}
-            </button>
+          <div className="mt-4 text-center">
+            <p className="text-sm text-[var(--text-secondary)]">
+              Didn't receive a code?{' '}
+              <button
+                onClick={handleResend}
+                disabled={resending}
+                className="inline-flex items-center gap-1 font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50 transition-colors"
+              >
+                {resending && <RefreshCw size={12} className="animate-spin" />}
+                Resend code
+              </button>
+            </p>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   )
 }
