@@ -41,7 +41,6 @@ class SegmentService
 
     private function buildQuery(?Segment $segment): Builder
     {
-        // Use SQL subqueries instead of PHP arrays to avoid memory issues at scale
         $query = Contact::where('opted_in', true)
             ->whereNotExists(function ($q) {
                 $q->from('opt_outs')
@@ -62,22 +61,44 @@ class SegmentService
     private function applyConditions(Builder $query, array $conditions): void
     {
         foreach ($conditions as $condition) {
-            $field = $condition['field'] ?? null;
-            $value = $condition['value'] ?? null;
+            $field    = $condition['field']    ?? null;
+            $operator = $condition['operator'] ?? 'is';
+            $value    = $condition['value']    ?? null;
 
             if (!$field || $value === null || $value === '') {
                 continue;
             }
 
-            match ($field) {
-                // Match tag by ID (not name) to survive tag renames
-                'tag'            => $query->whereHas('tags', fn($q) => $q->where('tags.id', (int) $value)),
-                'opted_in'       => $query->where('opted_in', (bool) $value),
-                'phone_country'  => $query->where('phone', 'like', $value . '%'),
-                'created_after'  => $query->whereDate('created_at', '>=', $value),
-                'created_before' => $query->whereDate('created_at', '<=', $value),
-                default          => null,
-            };
+            if ($field === 'tag') {
+                if ($operator === 'not_has') {
+                    $query->whereDoesntHave('tags', fn($q) => $q->where('tags.id', (int) $value));
+                } else {
+                    $query->whereHas('tags', fn($q) => $q->where('tags.id', (int) $value));
+                }
+            } elseif ($field === 'opted_in') {
+                $query->where('opted_in', (bool) $value);
+            } elseif (in_array($field, ['country', 'phone_country'], true)) {
+                // Match by phone number prefix (e.g. +966 for Saudi Arabia)
+                if ($operator === 'is_not') {
+                    $query->where('phone', 'not like', $value . '%');
+                } else {
+                    $query->where('phone', 'like', $value . '%');
+                }
+            } elseif ($field === 'created_at') {
+                if ($operator === 'before') {
+                    $query->whereDate('created_at', '<=', $value);
+                } elseif ($operator === 'after') {
+                    $query->whereDate('created_at', '>=', $value);
+                } elseif ($operator === 'within_days') {
+                    $query->where('created_at', '>=', now()->subDays((int) $value));
+                }
+            }
+            // Legacy flat field names (backward compat with older segments)
+            elseif ($field === 'created_before') {
+                $query->whereDate('created_at', '<=', $value);
+            } elseif ($field === 'created_after') {
+                $query->whereDate('created_at', '>=', $value);
+            }
         }
     }
 }
