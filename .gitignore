@@ -1,5 +1,8 @@
 *.log
 .DS_Store
+/public/spa/
+/frontend/node_modules/
+/frontend/dist/
 .env
 .env.backup
 .env.production

@@ -109,4 +109,12 @@ Route::middleware(['auth', 'verified', \App\Http\Middleware\EnsureUserIsActive::
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
+// ─── React SPA ────────────────────────────────────────────────────────────────
+// Catch all /spa/* routes and serve the built SPA index.html
+Route::get('/spa/{any?}', function () {
+    $path = public_path('spa/index.html');
+    abort_unless(file_exists($path), 404, 'SPA not built. Run: cd frontend && npm run build');
+    return response()->file($path);
+})->where('any', '.*')->name('spa');
+
 require __DIR__ . '/auth.php';
