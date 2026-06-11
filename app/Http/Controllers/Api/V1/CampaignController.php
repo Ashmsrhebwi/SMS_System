@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 
 class CampaignController extends Controller
@@ -66,13 +67,25 @@ class CampaignController extends Controller
         AuditLogger::log('create_campaign', $campaign, null, $campaign->only(['name', 'status']));
 
         if ($sendNow) {
-            DispatchCampaignJob::dispatch($campaign->id);
+            try {
+                DispatchCampaignJob::dispatch($campaign->id);
+            } catch (\Throwable $e) {
+                // Sync driver re-throws after calling failed(); ensure campaign isn't stuck in 'sending'
+                $campaign->refresh();
+                if ($campaign->status === 'sending') {
+                    $campaign->update(['status' => 'draft']);
+                }
+                Log::error('DispatchCampaignJob exception in store', [
+                    'campaign_id' => $campaign->id,
+                    'error'       => $e->getMessage(),
+                ]);
+            }
             AuditLogger::log('send_campaign', $campaign, null, ['trigger' => 'send_now']);
         } elseif ($data['scheduled_at'] ?? null) {
             DispatchCampaignJob::dispatch($campaign->id)->delay(Carbon::parse($data['scheduled_at']));
         }
 
-        return (new CampaignResource($campaign->load('segment', 'creator')))
+        return (new CampaignResource($campaign->fresh()->load('segment', 'creator')))
             ->response()
             ->setStatusCode(201);
     }
@@ -168,7 +181,20 @@ class CampaignController extends Controller
             return response()->json(['message' => 'Campaign cannot be sent in its current state.'], 422);
         }
 
-        DispatchCampaignJob::dispatch($campaign->id);
+        try {
+            DispatchCampaignJob::dispatch($campaign->id);
+        } catch (\Throwable $e) {
+            $campaign->refresh();
+            if ($campaign->status === 'sending') {
+                $campaign->update(['status' => 'draft']);
+            }
+            Log::error('DispatchCampaignJob exception in sendNow', [
+                'campaign_id' => $campaign->id,
+                'error'       => $e->getMessage(),
+            ]);
+            return response()->json(['message' => 'Campaign dispatch failed: ' . $e->getMessage()], 500);
+        }
+
         AuditLogger::log('send_campaign', $campaign->fresh());
 
         return response()->json(['message' => 'Campaign is being dispatched.']);

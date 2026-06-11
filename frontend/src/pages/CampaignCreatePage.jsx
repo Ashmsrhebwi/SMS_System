@@ -1,17 +1,17 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import api from '../services/api'
 import ErrorAlert from '../components/ErrorAlert'
 
 export default function CampaignCreatePage() {
   const navigate = useNavigate()
+  const sendNowRef = useRef(false)
 
   const [form, setForm] = useState({
     name: '',
     message_body: '',
     segment_id: '',
     scheduled_at: '',
-    send_now: false,
   })
   const [segments,  setSegments]  = useState([])
   const [templates, setTemplates] = useState([])
@@ -38,8 +38,16 @@ export default function CampaignCreatePage() {
     e.preventDefault()
     setError(null)
     setLoading(true)
+    // Read send intent from ref (set synchronously before form submit fires)
+    const isSendNow = sendNowRef.current
+    sendNowRef.current = false
     try {
-      const payload = { ...form, segment_id: form.segment_id || null, scheduled_at: form.scheduled_at || null }
+      const payload = {
+        ...form,
+        send_now: isSendNow,
+        segment_id: form.segment_id || null,
+        scheduled_at: form.scheduled_at || null,
+      }
       const res = await api.post('/campaigns', payload)
       navigate(`/campaigns/${res.data.data?.id ?? res.data.id}`)
     } catch (err) {
@@ -119,19 +127,19 @@ export default function CampaignCreatePage() {
             type="datetime-local"
             className="input"
             value={form.scheduled_at}
-            onChange={e => setForm(p => ({ ...p, scheduled_at: e.target.value, send_now: false }))}
+            onChange={e => setForm(p => ({ ...p, scheduled_at: e.target.value }))}
           />
         </div>
 
         <div className="flex gap-4 pt-2">
-          <button type="submit" className="btn-primary" disabled={loading} onClick={() => setForm(p => ({ ...p, send_now: false }))}>
+          <button type="submit" className="btn-primary" disabled={loading}>
             {loading ? 'Saving…' : 'Save as Draft'}
           </button>
           <button
             type="submit"
             className="btn-primary bg-green-600 hover:bg-green-700 focus:ring-green-500"
             disabled={loading}
-            onClick={() => setForm(p => ({ ...p, send_now: true }))}
+            onClick={() => { sendNowRef.current = true }}
           >
             {loading ? 'Sending…' : 'Send Now'}
           </button>
