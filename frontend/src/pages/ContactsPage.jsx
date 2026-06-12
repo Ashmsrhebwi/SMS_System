@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Upload, Download, Plus, Users, Filter } from 'lucide-react'
 import api from '../services/api'
@@ -26,6 +26,7 @@ export default function ContactsPage() {
   const [loading, setLoading]   = useState(true)
   const [drawerContact, setDrawer] = useState(null)
   const [importing, setImporting]  = useState(false)
+  const fileInputRef = useRef(null)
 
   const load = useCallback((p = 1) => {
     setLoading(true)
@@ -66,12 +67,10 @@ export default function ContactsPage() {
         subtitle={`${data?.meta?.total ?? 0} contacts`}
         action={
           <div className="flex items-center gap-2">
-            <label>
-              <Button variant="secondary" leftIcon={<Upload size={14} />} loading={importing} as="span" className="cursor-pointer">
-                Import
-              </Button>
-              <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={handleImport} />
-            </label>
+            <Button variant="secondary" leftIcon={<Upload size={14} />} loading={importing} onClick={() => fileInputRef.current?.click()}>
+              Import
+            </Button>
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={handleImport} />
             <a href="/api/v1/contacts/export" target="_blank" rel="noreferrer">
               <Button variant="secondary" leftIcon={<Download size={14} />}>Export</Button>
             </a>
