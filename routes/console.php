@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Prune expired OTP records daily at 03:00
 Schedule::command('auth:clean-otps')->dailyAt('03:00');
+
+// Complete campaigns stuck in "sending" when carriers don't send delivery receipts
+Schedule::command('campaigns:complete-stuck --hours=6')->hourly();

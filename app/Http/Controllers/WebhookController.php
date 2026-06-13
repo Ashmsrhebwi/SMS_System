@@ -17,11 +17,31 @@ class WebhookController extends Controller
         CampaignCompletionService $completion,
     ) {
         $signature = $request->header('X-Twilio-Signature', '');
-        $url       = route('webhooks.twilio.status');
         $params    = $request->post();
 
-        if (!$twilio->validateRequest($signature, $url, $params)) {
-            Log::warning('Invalid Twilio webhook signature', ['ip' => $request->ip()]);
+        // Try the canonical route URL first; fall back to the actual request URL
+        // to handle shared-hosting proxies where scheme may differ.
+        $routeUrl   = route('webhooks.twilio.status');
+        $requestUrl = $request->url();
+
+        $valid = $twilio->validateRequest($signature, $routeUrl, $params);
+
+        if (!$valid && $requestUrl !== $routeUrl) {
+            $valid = $twilio->validateRequest($signature, $requestUrl, $params);
+            if ($valid) {
+                Log::info('Twilio webhook: validated via request URL (proxy detected)', [
+                    'route_url'   => $routeUrl,
+                    'request_url' => $requestUrl,
+                ]);
+            }
+        }
+
+        if (!$valid) {
+            Log::warning('Invalid Twilio webhook signature', [
+                'ip'          => $request->ip(),
+                'route_url'   => $routeUrl,
+                'request_url' => $requestUrl,
+            ]);
             return response('Forbidden', 403);
         }
 
